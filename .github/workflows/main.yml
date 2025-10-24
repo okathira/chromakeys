@@ -1,7 +1,7 @@
 on:
   push:
   workflow_dispatch:
-name: 🚀 Deploy to keys.kosro.de on push
+name: build test
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,13 +29,3 @@ jobs:
       run: |
         pnpm i
         pnpm build
-    
-    - name: 📂 Sync files
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USER }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: /
-        local-dir: ./build/
-        protocol: ftps
