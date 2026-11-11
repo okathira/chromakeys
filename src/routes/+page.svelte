@@ -42,6 +42,21 @@
 	let sustainedNoteLabels: Set<string> = new Set()
 
 	let selectedOutput = $state<Output | null>(null)
+	let selectedChannels = $state<number[]>([1])
+	const channels = Array.from({ length: 16 }, (_, index) => index + 1)
+
+	const toggleChannel = (channel: number, enabled: boolean) => {
+		if (enabled) {
+			if (sustainHeld) selectedOutput?.sendControlChange(CC_SUSTAIN, 127, { channels: [channel] })
+			selectedChannels = [...selectedChannels, channel].sort((a, b) => a - b)
+		} else {
+			// Release notes and sustain before removing a channel from the output.
+			for (const held of heldNotes) selectedOutput?.stopNote(held.note, { channels: [channel] })
+			selectedOutput?.sendControlChange(CC_SUSTAIN, 0, { channels: [channel] })
+			selectedOutput?.sendPitchBend(0, { channels: [channel] })
+			selectedChannels = selectedChannels.filter((value) => value !== channel)
+		}
+	}
 	interface Key {
 		label: string
 		code: string
@@ -68,7 +83,7 @@
 	let velocity = $state(100)
 
 	const handlePitchBend = (value: number) => {
-		selectedOutput?.sendPitchBend(value)
+		if (selectedChannels.length) selectedOutput?.sendPitchBend(value, { channels: selectedChannels })
 	}
 	interface HeldNote {
 		code: string | null // code == keycode for keyboard-triggered notes, null for button-triggered notes
@@ -122,7 +137,7 @@
 				event.preventDefault()
 				break
 			case 'Space':
-				selectedOutput?.sendControlChange(CC_SUSTAIN, 127)
+				if (selectedChannels.length) selectedOutput?.sendControlChange(CC_SUSTAIN, 127, { channels: selectedChannels })
 				sustainHeld = true
 				event.preventDefault()
 				break
@@ -152,7 +167,7 @@
 
 		if (enforceScale && !isInScale(note)) return
 		if (heldNotes.some((held) => held.code === event.code)) return
-		selectedOutput?.playNote(note, { rawAttack: velocity })
+		if (selectedChannels.length) selectedOutput?.playNote(note, { rawAttack: velocity, channels: selectedChannels })
 		heldNotes.push({ code: event.code, note: note })
 		let label = noteToLabel(note)
 		if (enableSynth && label !== '' && piano?.loaded) piano?.triggerAttack(label)
@@ -161,7 +176,7 @@
 	const handleKeyUp = (event: KeyboardEvent) => {
 		switch (event.code) {
 			case 'Space':
-				selectedOutput?.sendControlChange(CC_SUSTAIN, 0)
+				if (selectedChannels.length) selectedOutput?.sendControlChange(CC_SUSTAIN, 0, { channels: selectedChannels })
 				sustainHeld = false
 				if (enableSynth && piano?.loaded) piano?.triggerRelease(Array.from(sustainedNoteLabels))
 				sustainedNoteLabels.clear()
@@ -170,7 +185,7 @@
 		heldNotes
 			.filter((held) => held.code === event.code)
 			.forEach((held) => {
-				selectedOutput?.stopNote(held.note)
+				if (selectedChannels.length) selectedOutput?.stopNote(held.note, { channels: selectedChannels })
 				let label = noteToLabel(held.note)
 				if (sustainHeld) {
 					sustainedNoteLabels.add(label)
@@ -184,13 +199,13 @@
 	const handleButtonPress = (key: Key, note: number, noteLabel: string) => {
 		if (enforceScale && !isInScale(note)) return
 		if (heldNotes.some((held) => held.code === key.code)) return
-		selectedOutput?.playNote(note, { rawAttack: velocity })
+		if (selectedChannels.length) selectedOutput?.playNote(note, { rawAttack: velocity, channels: selectedChannels })
 		heldNotes.push({ code: key.code, note: note })
 		if (enableSynth && noteLabel !== '' && piano?.loaded) piano?.triggerAttack(noteLabel)
 	}
 
 	const handleButtonRelease = (key: Key, note: number, noteLabel: string) => {
-		selectedOutput?.stopNote(note)
+		if (selectedChannels.length) selectedOutput?.stopNote(note, { channels: selectedChannels })
 		heldNotes = heldNotes.filter((held) => held.code !== key.code)
 		if (enableSynth && noteLabel !== '' && piano?.loaded) piano?.triggerRelease(noteLabel)
 	}
@@ -359,6 +374,18 @@
 			<Label>MIDI Song Learn</Label>
 			<MidiDropzone {midi} onmidichange={handleMidiChange}/>
 		</div>
+
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-sm font-medium">MIDI Output Channels</legend>
+			<div class="grid grid-cols-4 gap-2 pt-2">
+				{#each channels as channel}
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={selectedChannels.includes(channel)} onchange={(event) => toggleChannel(channel, event.currentTarget.checked)} />
+						{channel}
+					</label>
+				{/each}
+			</div>
+		</fieldset>
 	</div>
 </Portal>
 
